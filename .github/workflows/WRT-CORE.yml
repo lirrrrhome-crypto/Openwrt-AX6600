@@ -94,6 +94,10 @@ jobs:
             python3-dev python3-packaging python3-pyelftools python3-setuptools qemu-utils rsync swig \
             unzip wget xz-utils zlib1g-dev zstd
 
+          if [[ "$WRT_PROFILE" == "HONK" ]]; then
+            sudo apt-get install -y --no-install-recommends dwarves squashfs-tools
+          fi
+
           sudo timedatectl set-timezone "Asia/Shanghai"
 
           sudo mkdir -p /mnt/build_wrt
@@ -106,12 +110,14 @@ jobs:
           echo "WRT_MARK=${GITHUB_REPOSITORY%%/*}" >> $GITHUB_ENV
           WRT_PROFILE_UPPER=$(echo "${WRT_PROFILE:-PURE}" | tr '[:lower:]' '[:upper:]')
           case "$WRT_PROFILE_UPPER" in
-            PURE|PLUS) ;;
+            PURE|PLUS|HONK) ;;
             *) echo "Unsupported WRT_PROFILE: $WRT_PROFILE" >&2; exit 1 ;;
           esac
           echo "WRT_PROFILE=$WRT_PROFILE_UPPER" >> $GITHUB_ENV
           if [[ "$WRT_PROFILE_UPPER" == "PLUS" ]]; then
             echo "WRT_PROFILE_DESC=Plus 版，预装 OpenClash、PassWall2、Docker/Dockerman、AdGuard Home、DDNS、ttyd、UPnP 及分区扩容、网络唤醒等实用插件，刷完即用；启用 AdGuard Home 与代理插件前请先阅读 README 的「PLUS 版使用提示」" >> $GITHUB_ENV
+          elif [[ "$WRT_PROFILE_UPPER" == "HONK" ]]; then
+            echo "WRT_PROFILE_DESC=雅典娜 Honk 版，内置同次内核的独立 BTF、Honk 核心及 LuCI 管理页面" >> "$GITHUB_ENV"
           else
             echo "WRT_PROFILE_DESC=纯净版，轻量稳定，仅含基础网络与常用管理插件，扩展插件按需自行安装" >> $GITHUB_ENV
           fi
@@ -218,6 +224,14 @@ jobs:
           cd ./wrt/package/
 
           : > "$GITHUB_WORKSPACE/package-versions.txt"
+          if [[ "$WRT_PROFILE" == "HONK" ]]; then
+            # 固定经过核对的包定义和下载校验值；核心及 Doona 由包内哈希验证。
+            HONK_COMMIT=b226e044f7aa9b2a679a72b477fa5c13f8082163
+            git init -q openwrt-honk
+            git -C openwrt-honk fetch --depth=1 https://github.com/kenzok8/openwrt-honk.git "$HONK_COMMIT"
+            git -C openwrt-honk checkout -q --detach "$HONK_COMMIT"
+            echo "honk / luci-app-honk kenzok8/openwrt-honk $HONK_COMMIT" >> "$GITHUB_WORKSPACE/package-versions.txt"
+          fi
           $GITHUB_WORKSPACE/Scripts/Packages.sh
           if [[ "$WRT_PROFILE" == "PLUS" && -e ../feeds/passwall_packages/.git ]]; then
             echo "passwall_packages(feed) Openwrt-Passwall/openwrt-passwall-packages main $(git -C ../feeds/passwall_packages rev-parse --short HEAD)" >> "$GITHUB_WORKSPACE/package-versions.txt"
@@ -252,6 +266,10 @@ jobs:
 
           make defconfig -j$(nproc)
           make clean -j$(nproc)
+
+          if [[ "$WRT_PROFILE" == "HONK" ]]; then
+            bash "$GITHUB_WORKSPACE/.github/scripts/verify-honk.sh" config
+          fi
 
           echo "=== 正在执行 .config 配置断言校验 ==="
           FAIL=0
@@ -343,6 +361,14 @@ jobs:
 
           make download -j$(nproc)
 
+      - name: 从本次内核提取独立 BTF
+        if: env.WRT_PROFILE == 'HONK' && env.WRT_TEST != 'true'
+        run: |
+          cd ./wrt/
+          # 源码的 prepare 先生成工具链并完成 target 编译；此时尚未打包根文件系统。
+          make -j$(nproc) prepare || make -j1 V=s prepare
+          bash "$GITHUB_WORKSPACE/.github/scripts/verify-honk.sh" btf
+
       - name: Compile Firmware
         if: env.WRT_TEST != 'true'
         run: |
@@ -351,6 +377,12 @@ jobs:
           mkdir -p $GITHUB_WORKSPACE/build-reports
           make -j$(nproc) BUILD_TIME_LOG="$GITHUB_WORKSPACE/build-reports/parallel.tsv" || \
             make -j1 V=s BUILD_TIME_LOG="$GITHUB_WORKSPACE/build-reports/serial.tsv"
+
+      - name: 验证 Honk 固件
+        if: env.WRT_PROFILE == 'HONK' && env.WRT_TEST != 'true'
+        run: |
+          cd ./wrt/
+          bash "$GITHUB_WORKSPACE/.github/scripts/verify-honk.sh" image
 
       - name: Collect Build Reports
         if: env.WRT_TEST != 'true' && always()
@@ -438,7 +470,17 @@ jobs:
             echo "- Kernel: \`$WRT_KVER\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
+      - name: 上传 Honk 构建产物
+        if: env.WRT_PROFILE == 'HONK'
+        uses: actions/upload-artifact@v4
+        with:
+          name: AX6600-HONK-${{ env.WRT_HASH }}-${{ github.run_attempt }}
+          path: ./wrt/upload/
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Release Firmware
+        if: env.WRT_PROFILE != 'HONK'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.WRT_CONFIG }}-${{ env.WRT_PROFILE }}-${{ env.WRT_INFO }}-${{ env.WRT_BRANCH }}-${{ env.WRT_DATE }}
@@ -515,7 +557,7 @@ jobs:
   cache-rollover:
     name: Roll cache generations
     needs: core
-    if: inputs.WRT_TEST != 'true' && needs.core.result == 'success'
+    if: inputs.WRT_PROFILE != 'HONK' && inputs.WRT_TEST != 'true' && needs.core.result == 'success'
     runs-on: ubuntu-latest
     concurrency:
       group: wrt-cache-rollover-${{github.ref}}-${{needs.core.outputs.cache_prefix}}

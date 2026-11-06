@@ -1,0 +1,30 @@
+name: 雅典娜 AX6600 · Honk
+
+on:
+  workflow_dispatch:
+    inputs:
+      config_only:
+        description: 仅检查并导出配置
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  honk:
+    name: 雅典娜 Honk 专版
+    uses: ./.github/workflows/WRT-CORE.yml
+    with:
+      WRT_CONFIG: IPQ60XX-WIFI-YES
+      WRT_THEME: bootstrap
+      WRT_NAME: OWRT
+      WRT_SSID: OWRT
+      WRT_WORD: '12345678'
+      WRT_IP: 192.168.10.1
+      WRT_PW: 无
+      WRT_REPO: https://github.com/ones20250/immortalwrt_ipq.git
+      WRT_BRANCH: owrt
+      WRT_SOURCE: ones20250/immortalwrt_ipq
+      WRT_PROFILE: HONK
+      WRT_TEST: ${{ inputs.config_only && 'true' || 'false' }}
