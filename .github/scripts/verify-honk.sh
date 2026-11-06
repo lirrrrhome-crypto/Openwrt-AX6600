@@ -28,7 +28,7 @@ case "${1:-}" in
     btf)
         kernel=$(kernel_binary)
         mkdir -p "files/${btf_path%/*}"
-        pahole --btf_encode_detached="files/$btf_path" "$kernel"
+        pahole -j1 --btf_encode_detached="files/$btf_path" "$kernel"
         # 核验小端 BTF 头、类型区与字符串区的边界，防止空文件进入镜像。
         python3 - "files/$btf_path" <<'PY'
 import struct
@@ -72,6 +72,9 @@ PY
         # 核对两份成品内的 BTF 与本次内核生成的数据逐字节一致。
         temp_dir=$(mktemp -d)
         trap 'rm -rf "$temp_dir"' EXIT
+        # 镜像阶段可能重新链接内核。再从最终 vmlinux 导出一次，避免带入过期类型信息。
+        pahole -j1 --btf_encode_detached="$temp_dir/final.btf" "$kernel"
+        cmp "$temp_dir/final.btf" "files/$btf_path"
         dd if="${factory[0]}" of="$temp_dir/root.squashfs" bs=1M skip=6 status=none
         unsquashfs -cat "$temp_dir/root.squashfs" "$btf_path" | cmp - "files/$btf_path"
         root_member=$(grep -E '^([^/]+/)+root$' <<< "$members") || fail '升级镜像中没有根文件系统'
