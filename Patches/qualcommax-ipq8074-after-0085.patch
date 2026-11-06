@@ -1,0 +1,45 @@
+diff --git a/target/linux/qualcommax/patches-6.18/0919-clk-qcom-gcc-ipq8074-keep-port-5-on-uniphy1-at-SGMII-rates.patch b/target/linux/qualcommax/patches-6.18/0919-clk-qcom-gcc-ipq8074-keep-port-5-on-uniphy1-at-SGMII-rates.patch
+new file mode 100644
+--- /dev/null
++++ b/target/linux/qualcommax/patches-6.18/0919-clk-qcom-gcc-ipq8074-keep-port-5-on-uniphy1-at-SGMII-rates.patch
+@@ -0,0 +1,40 @@
++Subject: [PATCH] clk: qcom: gcc-ipq8074: prefer UNIPHY1 for port 5 SGMII
++
++保留已有分频项，将 UNIPHY1 的选取优先级恢复到本系列的设计顺序。
++
++--- a/drivers/clk/qcom/gcc-ipq8074.c
+++++ b/drivers/clk/qcom/gcc-ipq8074.c
++@@ -1679,14 +1679,14 @@
++ 
++ static const struct freq_conf ftbl_nss_port5_rx_clk_src_25[] = {
++ 	C(P_UNIPHY1_RX, 12.5, 0, 0),
+++	C(P_UNIPHY1_RX, 5, 0, 0),
++ 	C(P_UNIPHY0_RX, 5, 0, 0),
++-	C(P_UNIPHY1_RX, 5, 0, 0),
++ };
++ 
++ static const struct freq_conf ftbl_nss_port5_rx_clk_src_125[] = {
++ 	C(P_UNIPHY1_RX, 2.5, 0, 0),
+++	C(P_UNIPHY1_RX, 1, 0, 0),
++ 	C(P_UNIPHY0_RX, 1, 0, 0),
++-	C(P_UNIPHY1_RX, 1, 0, 0),
++ };
++ 
++ static const struct freq_multi_tbl ftbl_nss_port5_rx_clk_src[] = {
++@@ -1751,14 +1751,14 @@
++ 
++ static const struct freq_conf ftbl_nss_port5_tx_clk_src_25[] = {
++ 	C(P_UNIPHY1_TX, 12.5, 0, 0),
+++	C(P_UNIPHY1_TX, 5, 0, 0),
++ 	C(P_UNIPHY0_TX, 5, 0, 0),
++-	C(P_UNIPHY1_TX, 5, 0, 0),
++ };
++ 
++ static const struct freq_conf ftbl_nss_port5_tx_clk_src_125[] = {
++ 	C(P_UNIPHY1_TX, 2.5, 0, 0),
+++	C(P_UNIPHY1_TX, 1, 0, 0),
++ 	C(P_UNIPHY0_TX, 1, 0, 0),
++-	C(P_UNIPHY1_TX, 1, 0, 0),
++ };
++ 
++ static const struct freq_multi_tbl ftbl_nss_port5_tx_clk_src[] = {

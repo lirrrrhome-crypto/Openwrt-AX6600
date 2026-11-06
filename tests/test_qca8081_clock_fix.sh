@@ -12,6 +12,7 @@ WORKFLOW_FILE="$REPO_ROOT/.github/workflows/WRT-CORE.yml"
 
 DRIVER="target/linux/qualcommax/files/drivers/net/ethernet/qualcomm/qca_ppe_main.c"
 TARGET="target/linux/qualcommax/Makefile"
+UPSTREAM_0085="target/linux/qualcommax/patches-6.18/0085-clk-qcom-gcc-ipq8074-add-port5-sgmii-rates.patch"
 
 SOURCE="${1:-}"
 FIXTURE="$REPO_ROOT/tests/fixtures/qca_ppe_main_clean.c"
@@ -39,6 +40,10 @@ fresh_tree() {
     if [ -n "$SOURCE" ]; then
         cp "$SOURCE/$DRIVER" "$TREE/$DRIVER"
         cp "$SOURCE/$TARGET" "$TREE/$TARGET"
+        if [[ -f "$SOURCE/$UPSTREAM_0085" ]]; then
+            mkdir -p "$TREE/$(dirname "$UPSTREAM_0085")"
+            cp "$SOURCE/$UPSTREAM_0085" "$TREE/$UPSTREAM_0085"
+        fi
     else
         cp "$FIXTURE" "$TREE/$DRIVER"
         printf "KERNEL_PATCHVER:=6.18\n" > "$TREE/$TARGET"
@@ -61,6 +66,19 @@ run_helper
 snapshot > "$TMP/twice"
 cmp "$TMP/once" "$TMP/twice"
 echo 'PASS: complete fix applies cleanly and repeated application is idempotent'
+
+# 对实际已带 0085 的源码，验证 0919 是移动已有项而非重复添加，并且上游补丁未变。
+if [[ -f "$TREE/$UPSTREAM_0085" ]]; then
+    cmp "$SOURCE/$UPSTREAM_0085" "$TREE/$UPSTREAM_0085"
+    nested="$TREE/target/linux/qualcommax/patches-6.18/0919-clk-qcom-gcc-ipq8074-keep-port-5-on-uniphy1-at-SGMII-rates.patch"
+    for side in RX TX; do
+        for div in 1 5; do
+            grep -Fq "+$(printf '\t')C(P_UNIPHY1_${side}, $div, 0, 0)," "$nested"
+            grep -Fq -- "-$(printf '\t')C(P_UNIPHY1_${side}, $div, 0, 0)," "$nested"
+        done
+    done
+    echo '通过：已有 0085 时四个分频项仅调整优先顺序。'
+fi
 
 # 2. 源码上下文漂移时的原子性防护（不可部分打入）
 fresh_tree drift
